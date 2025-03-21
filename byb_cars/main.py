@@ -50,6 +50,7 @@ class GameWindow(QMainWindow):
         # Signal processing
         self.signal_buffer = np.zeros(1000)
         self.signal_integral = 0.0
+        self.signal_decay = 0.95  # Decay factor for signal integral
         
         # Enable key tracking
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -126,6 +127,7 @@ class GameWindow(QMainWindow):
             self.game_world.reset()
             self.start_button.setEnabled(False)
             self.game_state = "running"
+            self.signal_integral = 0.0  # Reset signal integral
             
     def _update_game(self):
         if self.game_state != "running":
@@ -135,7 +137,9 @@ class GameWindow(QMainWindow):
         signal_value = self.input_handler.get_value()
         self.signal_buffer = np.roll(self.signal_buffer, -1)
         self.signal_buffer[-1] = signal_value
-        self.signal_integral += signal_value
+        
+        # Update signal integral with decay
+        self.signal_integral = self.signal_integral * self.signal_decay + signal_value
         
         # Update plot
         self.signal_curve.setData(self.signal_buffer)
@@ -171,6 +175,7 @@ class GameWindow(QMainWindow):
     def _reset_game(self):
         self.game_state = "idle"
         self.start_button.setEnabled(True)
+        self.signal_integral = 0.0  # Reset signal integral
 
 def main():
     app = QApplication([])

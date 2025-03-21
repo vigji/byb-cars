@@ -17,10 +17,12 @@ dependencies = [
     "pyqtgraph>=0.13.3",
     "numpy>=1.21.0",
     "pyfirmata>=1.1.0; platform_system != 'Windows'",  # Optional, for Arduino support
+    "ursina>=5.2.0",  # 3D game engine
 ]
 
 [project.scripts]
 byb-cars = "byb_cars.main:main"
+byb-cars-3d = "byb_cars.main_3d:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["byb_cars"] 

@@ -13,32 +13,9 @@ A car racing game controlled by EMG signals from a Backyard Brains shield. The g
 ## Prerequisites
 
 - Python 3.8 or higher
-- `uv` package manager (recommended) or `pip`
+- pip (Python package installer)
 
 ## Installation
-
-### Using uv (Recommended)
-
-1. Install uv if you haven't already:
-```bash
-# First, remove any existing uv installations
-pip uninstall uv -y  # Remove pip-installed uv
-rm -f ~/.local/bin/uv  # Remove any local uv installation
-rm -f ~/.local/bin/uvx  # Remove any local uvx installation
-
-# Install uv using the official installer
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Verify installation
-uv --version
-```
-
-2. Install the package:
-```bash
-uv pip install byb-cars
-```
-
-### Using pip
 
 ```bash
 pip install byb-cars
@@ -49,7 +26,7 @@ pip install byb-cars
 ### Demo Mode (No Hardware Required)
 
 ```bash
-uv run byb-cars
+byb-cars
 ```
 
 ### With Arduino and Backyard Brains Shield
@@ -59,7 +36,7 @@ uv run byb-cars
 3. Run the game with the Arduino port:
 
 ```bash
-uv run byb-cars --port /dev/ttyUSB0  # or whatever your Arduino port is
+byb-cars --port /dev/ttyUSB0  # or whatever your Arduino port is
 ```
 
 ## How to Play
@@ -74,42 +51,28 @@ uv run byb-cars --port /dev/ttyUSB0  # or whatever your Arduino port is
 
 To set up the development environment:
 
-1. Install uv if you haven't already:
-```bash
-# First, remove any existing uv installations
-pip uninstall uv -y  # Remove pip-installed uv
-rm -f ~/.local/bin/uv  # Remove any local uv installation
-rm -f ~/.local/bin/uvx  # Remove any local uvx installation
-
-# Install uv using the official installer
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Verify installation
-uv --version
-```
-
-2. Clone the repository:
+1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/byb-cars.git
 cd byb-cars
 ```
 
-3. Create and activate a virtual environment:
+2. Create and activate a virtual environment:
 ```bash
-uv venv
+python -m venv .venv
 source .venv/bin/activate  # On Unix/macOS
 # or
 .venv\Scripts\activate  # On Windows
 ```
 
-4. Install development dependencies:
+3. Install development dependencies:
 ```bash
-uv pip install -e .
+pip install -e .
 ```
 
-5. Run the game:
+4. Run the game:
 ```bash
-uv run byb-cars
+byb-cars
 ```
 
 ## Project Structure
