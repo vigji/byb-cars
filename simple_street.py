@@ -3,6 +3,10 @@ import sys
 import random
 import requests
 from pathlib import Path
+import numpy as np  # For some calculations
+
+# Import the InputHandler
+from byb_cars.input_handler import InputHandler
 
 # Initialize Pygame
 pygame.init()
@@ -201,29 +205,40 @@ def generate_trees(num_trees):
     
     return trees
 
-# Create a car with variable speed
+# Create a car with speed control via InputHandler
 class Car:
-    def __init__(self, img, x, y):
+    def __init__(self, img, x, y, input_handler):
         self.img = img
         self.x = x
         self.y = y        # World Y position
         self.screen_y = y # Fixed screen position
-        self.base_speed = 3
-        self.speed = self.base_speed
-        self.target_speed = self.base_speed
-        self.acceleration = 0.1
+        self.input_handler = input_handler
+        
+        # Speed parameters
+        self.min_speed = 0.5
+        self.max_speed = 8.0
+        self.speed = 3.0  # Default speed
+        
+        # Speed feedback visuals
+        self.speed_bar_width = 100
+        self.speed_bar_height = 10
     
     def update(self):
-        # Randomly change target speed
-        if random.random() < 0.02:  # 2% chance each frame
-            self.target_speed = self.base_speed + random.uniform(-1, 2)
-            self.target_speed = max(1, min(6, self.target_speed))
+        # Get input value from InputHandler
+        input_value = self.input_handler.get_value()
         
-        # Gradually adjust speed
-        if self.speed < self.target_speed:
-            self.speed = min(self.speed + self.acceleration, self.target_speed)
-        elif self.speed > self.target_speed:
-            self.speed = max(self.speed - self.acceleration, self.target_speed)
+        # Map input value to speed (adjust ranges as needed)
+        # When input is around 0, speed is minimum
+        # When input is high (around 2.0+), speed is maximum
+        if input_value <= 0:
+            mapped_speed = self.min_speed
+        else:
+            # Map input_value (0 to ~3) to speed range
+            mapped_speed = self.min_speed + (input_value / 3.0) * (self.max_speed - self.min_speed)
+            mapped_speed = min(mapped_speed, self.max_speed)  # Cap at max speed
+        
+        # Set car speed
+        self.speed = mapped_speed
         
         # Move car upward in world space
         self.y -= self.speed
@@ -233,13 +248,42 @@ class Car:
     def draw(self, surface):
         # Always draw at the fixed screen position
         surface.blit(self.img, (self.x - self.img.get_width()//2, self.screen_y))
+        
+        # Draw speed indicator
+        self._draw_speed_indicator(surface)
+    
+    def _draw_speed_indicator(self, surface):
+        # Draw a speed bar on the right side of the screen
+        bar_x = WIDTH - self.speed_bar_width - 20
+        bar_y = 20
+        
+        # Background bar (outline)
+        pygame.draw.rect(surface, (50, 50, 50), 
+                        (bar_x, bar_y, self.speed_bar_width, self.speed_bar_height), 2)
+        
+        # Calculate fill amount based on current speed
+        fill_width = int((self.speed / self.max_speed) * self.speed_bar_width)
+        
+        # Fill bar (colored by speed)
+        if self.speed < self.max_speed * 0.33:
+            color = (0, 255, 0)  # Green for low speed
+        elif self.speed < self.max_speed * 0.66:
+            color = (255, 255, 0)  # Yellow for medium speed
+        else:
+            color = (255, 0, 0)  # Red for high speed
+            
+        pygame.draw.rect(surface, color, 
+                        (bar_x, bar_y, fill_width, self.speed_bar_height))
 
 # Generate trees
 trees = generate_trees(30)
 
+# Initialize InputHandler in demo mode
+input_handler = InputHandler(demo_mode=True)
+
 # Create the car - at a fixed screen position
 car_screen_y = HEIGHT - 150
-car = Car(car_img, WIDTH // 2, car_screen_y)
+car = Car(car_img, WIDTH // 2, car_screen_y, input_handler)
 
 # Main game variables
 camera_y = 0  # Camera position in world coordinates
@@ -254,8 +298,15 @@ while running:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_q:
                 running = False
+            elif event.key == pygame.K_SPACE:
+                # Set key_pressed to True when space is pressed
+                input_handler.set_key_state(True)
+        elif event.type == pygame.KEYUP:
+            if event.key == pygame.K_SPACE:
+                # Set key_pressed to False when space is released
+                input_handler.set_key_state(False)
     
-    # Update car position and speed
+    # Update car position and speed based on input
     current_speed = car.update()
     
     # Camera follows car
@@ -289,11 +340,20 @@ while running:
     text_surface = font.render(speed_text, True, (0, 0, 0))
     screen.blit(text_surface, (20, 20))
     
+    # Show input value
+    input_value = input_handler.get_value()
+    input_text = f"Input: {input_value:.2f}"
+    input_surface = font.render(input_text, True, (0, 0, 0))
+    screen.blit(input_surface, (20, 60))
+    
     # Show controls
     controls_font = pygame.font.SysFont(None, 24)
-    controls_text = "Q: Quit"
+    if input_handler.demo_mode:
+        controls_text = "SPACE: Accelerate | Q: Quit"
+    else:
+        controls_text = "Use EMG Input | Q: Quit"
     controls_surface = controls_font.render(controls_text, True, (0, 0, 0))
-    screen.blit(controls_surface, (20, 60))
+    screen.blit(controls_surface, (20, 100))
     
     # Update display
     pygame.display.flip()
