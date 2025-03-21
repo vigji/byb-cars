@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QInputDialog,
 )
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QKeyEvent
 import pyqtgraph as pg
 
 from .input_handler import InputHandler
@@ -36,6 +37,7 @@ class GameWindow(QMainWindow):
         self.best_time = None
         self.rankings_file = Path.home() / ".byb_cars_rankings.json"
         self.rankings = self._load_rankings()
+        self.game_state = "idle"  # idle, running, finished
         
         # Setup UI
         self._setup_ui()
@@ -49,6 +51,19 @@ class GameWindow(QMainWindow):
         self.signal_buffer = np.zeros(1000)
         self.signal_integral = 0.0
         
+        # Enable key tracking
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+    def keyPressEvent(self, event: QKeyEvent):
+        """Handle key press events."""
+        if event.key() == Qt.Key.Key_Space:
+            self.input_handler.set_key_state(True)
+            
+    def keyReleaseEvent(self, event: QKeyEvent):
+        """Handle key release events."""
+        if event.key() == Qt.Key.Key_Space:
+            self.input_handler.set_key_state(False)
+            
     def _setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -58,8 +73,10 @@ class GameWindow(QMainWindow):
         top_bar = QHBoxLayout()
         self.time_label = QLabel("Time: 0.00s")
         self.best_time_label = QLabel("Best: --")
+        self.control_label = QLabel("Press SPACE to control the car")
         top_bar.addWidget(self.time_label)
         top_bar.addWidget(self.best_time_label)
+        top_bar.addWidget(self.control_label)
         layout.addLayout(top_bar)
         
         # Signal plot
@@ -94,14 +111,26 @@ class GameWindow(QMainWindow):
             json.dump(self.rankings, f)
             
     def _start_game(self):
-        name, ok = QInputDialog.getText(self, "Player Name", "Enter your name:")
-        if ok and name:
+        # Create a non-blocking input dialog
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Player Name")
+        dialog.setLabelText("Enter your name:")
+        dialog.setModal(False)  # Make it non-modal
+        dialog.accepted.connect(lambda: self._handle_name_input(dialog.textValue()))
+        dialog.show()
+        
+    def _handle_name_input(self, name: str):
+        if name:
             self.player_name = name
             self.current_time = 0.0
             self.game_world.reset()
             self.start_button.setEnabled(False)
+            self.game_state = "running"
             
     def _update_game(self):
+        if self.game_state != "running":
+            return
+            
         # Update signal
         signal_value = self.input_handler.get_value()
         self.signal_buffer = np.roll(self.signal_buffer, -1)
@@ -113,6 +142,7 @@ class GameWindow(QMainWindow):
         
         # Update game world
         self.game_world.update(self.signal_integral)
+        self.game_world.draw(self.game_view)
         
         # Update time
         self.current_time += 0.016  # ~60 FPS
@@ -123,13 +153,24 @@ class GameWindow(QMainWindow):
             self._handle_lap_complete()
             
     def _handle_lap_complete(self):
+        self.game_state = "finished"
+        
         if self.player_name not in self.rankings or self.current_time < self.rankings[self.player_name]:
             self.rankings[self.player_name] = self.current_time
             self._save_rankings()
             self.best_time_label.setText(f"Best: {self.current_time:.2f}s")
             
+        # Create a non-blocking message box
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Lap Complete!")
+        msg.setText(f"Time: {self.current_time:.2f}s")
+        msg.setModal(False)  # Make it non-modal
+        msg.accepted.connect(self._reset_game)
+        msg.show()
+        
+    def _reset_game(self):
+        self.game_state = "idle"
         self.start_button.setEnabled(True)
-        QMessageBox.information(self, "Lap Complete!", f"Time: {self.current_time:.2f}s")
 
 def main():
     app = QApplication([])

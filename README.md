@@ -10,7 +10,35 @@ A car racing game controlled by EMG signals from a Backyard Brains shield. The g
 - Demo mode for testing without hardware
 - Support for Arduino with Backyard Brains shield
 
+## Prerequisites
+
+- Python 3.8 or higher
+- `uv` package manager (recommended) or `pip`
+
 ## Installation
+
+### Using uv (Recommended)
+
+1. Install uv if you haven't already:
+```bash
+# First, remove any existing uv installations
+pip uninstall uv -y  # Remove pip-installed uv
+rm -f ~/.local/bin/uv  # Remove any local uv installation
+rm -f ~/.local/bin/uvx  # Remove any local uvx installation
+
+# Install uv using the official installer
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Verify installation
+uv --version
+```
+
+2. Install the package:
+```bash
+uv pip install byb-cars
+```
+
+### Using pip
 
 ```bash
 pip install byb-cars
@@ -21,7 +49,7 @@ pip install byb-cars
 ### Demo Mode (No Hardware Required)
 
 ```bash
-byb-cars
+uv run byb-cars
 ```
 
 ### With Arduino and Backyard Brains Shield
@@ -31,14 +59,14 @@ byb-cars
 3. Run the game with the Arduino port:
 
 ```bash
-byb-cars --port /dev/ttyUSB0  # or whatever your Arduino port is
+uv run byb-cars --port /dev/ttyUSB0  # or whatever your Arduino port is
 ```
 
 ## How to Play
 
 1. Enter your name when prompted
 2. Click "Start Game"
-3. Use your muscle activity to control the car
+3. Use your muscle activity (or SPACE key in demo mode) to control the car
 4. Complete a lap to record your time
 5. Try to beat your best time!
 
@@ -46,10 +74,55 @@ byb-cars --port /dev/ttyUSB0  # or whatever your Arduino port is
 
 To set up the development environment:
 
+1. Install uv if you haven't already:
+```bash
+# First, remove any existing uv installations
+pip uninstall uv -y  # Remove pip-installed uv
+rm -f ~/.local/bin/uv  # Remove any local uv installation
+rm -f ~/.local/bin/uvx  # Remove any local uvx installation
+
+# Install uv using the official installer
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Verify installation
+uv --version
+```
+
+2. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/byb-cars.git
 cd byb-cars
-pip install -e .
+```
+
+3. Create and activate a virtual environment:
+```bash
+uv venv
+source .venv/bin/activate  # On Unix/macOS
+# or
+.venv\Scripts\activate  # On Windows
+```
+
+4. Install development dependencies:
+```bash
+uv pip install -e .
+```
+
+5. Run the game:
+```bash
+uv run byb-cars
+```
+
+## Project Structure
+
+```
+byb-cars/
+├── byb_cars/
+│   ├── __init__.py
+│   ├── main.py          # Main game window and logic
+│   ├── input_handler.py # Input handling (EMG/Arduino)
+│   └── game_world.py    # Game world and car physics
+├── pyproject.toml       # Project configuration
+└── README.md           # This file
 ```
 
 ## License
