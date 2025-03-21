@@ -3,7 +3,8 @@ import sys
 import random
 import requests
 from pathlib import Path
-import numpy as np  # For some calculations
+import numpy as np
+import time
 
 # Import the InputHandler
 from byb_cars.input_handler import InputHandler
@@ -12,7 +13,7 @@ from byb_cars.input_handler import InputHandler
 pygame.init()
 
 # Screen dimensions
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 800, 700  # Increased height for the signal plot
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Scrolling Road with Car")
 
@@ -21,6 +22,12 @@ SKY_BLUE = (135, 206, 235)
 ROAD_GRAY = (100, 100, 100)
 GRASS_GREEN = (76, 153, 0)
 LINE_WHITE = (255, 255, 255)
+PLOT_BG = (240, 240, 240)
+PLOT_GRID = (200, 200, 200)
+PLOT_LINE = (0, 0, 255)  # Blue line for signal
+THRESHOLD_LINE = (255, 0, 0)  # Red line for threshold
+START_LINE_COLOR = (0, 255, 0)  # Green for start line
+FINISH_LINE_COLOR = (255, 0, 0)  # Red for finish line
 
 # Create assets directory if it doesn't exist
 assets_dir = Path("assets")
@@ -127,91 +134,321 @@ road_width = WIDTH // 3
 road_left = (WIDTH - road_width) // 2
 road_right = road_left + road_width
 
-# Generate the road surface with markings
-def create_road():
-    # Create a large road surface to scroll
-    tile_size = 100  # The size of each road tile
-    num_tiles = 8    # How many tiles to create
-    
-    road_surface = pygame.Surface((road_width, tile_size * num_tiles))
-    road_surface.fill(ROAD_GRAY)
-    
-    # Draw center line (dashed)
-    dash_length = 40
-    gap_length = 20
-    line_width = 8
-    center_x = road_width // 2
-    
-    y = 0
-    while y < road_surface.get_height():
-        pygame.draw.rect(road_surface, LINE_WHITE, 
-                         (center_x - line_width//2, y, line_width, dash_length))
-        y += dash_length + gap_length
-    
-    # Draw edge lines
-    pygame.draw.rect(road_surface, LINE_WHITE, (5, 0, 3, road_surface.get_height()))
-    pygame.draw.rect(road_surface, LINE_WHITE, (road_width - 8, 0, 3, road_surface.get_height()))
-    
-    return road_surface
-
-# Create the road
-road_surface = create_road()
-road_height = road_surface.get_height()
-
-# Generate trees with fixed world positions
-class Tree:
-    def __init__(self, img, x, y):
-        self.img = img
-        self.x = x
-        self.y = y  # World Y position
-    
-    def draw(self, surface, camera_y):
-        # Calculate screen position (relative to camera)
-        screen_y = self.y - camera_y
+# Signal Plot class (similar to PyQtGraph implementation in main.py)
+class SignalPlot:
+    def __init__(self, width, height, buffer_size=200):
+        self.width = width
+        self.height = height
+        self.buffer_size = buffer_size
+        self.signal_buffer = np.zeros(buffer_size)
+        self.surface = pygame.Surface((width, height))
         
-        # Wrap around vertically if tree goes off-screen
-        world_height = HEIGHT * 2
-        while screen_y > HEIGHT:
-            screen_y -= world_height
-        while screen_y < -self.img.get_height():
-            screen_y += world_height
+        # Plot boundaries
+        self.plot_margin = 10
+        self.plot_width = width - 2 * self.plot_margin
+        self.plot_height = height - 2 * self.plot_margin
         
-        # Only draw if on screen
-        if -self.img.get_height() < screen_y < HEIGHT:
-            surface.blit(self.img, (self.x, screen_y))
+        # Y-axis scaling
+        self.y_min = 0
+        self.y_max = 3.0  # Maximum expected signal value
+        
+    def update(self, new_value):
+        # Roll buffer and add new value
+        self.signal_buffer = np.roll(self.signal_buffer, -1)
+        self.signal_buffer[-1] = new_value
+        
+        # Dynamically adjust y-axis if needed
+        if new_value > self.y_max:
+            self.y_max = new_value * 1.2  # Give some headroom
+        
+    def draw(self, surface, x, y):
+        # Clear plot area
+        self.surface.fill(PLOT_BG)
+        
+        # Draw border
+        pygame.draw.rect(self.surface, (0, 0, 0), 
+                        (self.plot_margin, self.plot_margin, 
+                         self.plot_width, self.plot_height), 1)
+        
+        # Draw grid lines
+        for i in range(1, 4):  # Draw 3 horizontal grid lines
+            y_pos = self.plot_margin + i * self.plot_height // 4
+            pygame.draw.line(self.surface, PLOT_GRID, 
+                            (self.plot_margin, y_pos), 
+                            (self.plot_margin + self.plot_width, y_pos), 1)
+            
+            # Add y-axis labels
+            font = pygame.font.SysFont(None, 20)
+            value = self.y_max * (4 - i) / 4
+            label = font.render(f"{value:.1f}", True, (0, 0, 0))
+            self.surface.blit(label, (5, y_pos - 10))
+            
+        # Draw threshold line at 1.0 (typical threshold for significant signal)
+        threshold_y = self.plot_margin + self.plot_height - (1.0 / self.y_max * self.plot_height)
+        pygame.draw.line(self.surface, THRESHOLD_LINE, 
+                        (self.plot_margin, threshold_y), 
+                        (self.plot_margin + self.plot_width, threshold_y), 1)
+            
+        # Draw signal line
+        points = []
+        for i in range(self.buffer_size):
+            x_pos = self.plot_margin + i * self.plot_width / (self.buffer_size - 1)
+            # Scale value to plot height (flipped, as pygame y increases downward)
+            y_pos = self.plot_margin + self.plot_height - (self.signal_buffer[i] / self.y_max * self.plot_height)
+            y_pos = min(self.plot_margin + self.plot_height, max(self.plot_margin, y_pos))  # Clamp to plot area
+            points.append((x_pos, y_pos))
+            
+        # Draw signal line
+        if len(points) > 1:
+            pygame.draw.lines(self.surface, PLOT_LINE, False, points, 2)
+        
+        # Add title and labels
+        font = pygame.font.SysFont(None, 24)
+        title = font.render("EMG Signal", True, (0, 0, 0))
+        self.surface.blit(title, (self.width // 2 - title.get_width() // 2, 5))
+        
+        # Current value
+        if len(self.signal_buffer) > 0:
+            current_value = self.signal_buffer[-1]
+            value_text = font.render(f"Current: {current_value:.2f}", True, (0, 0, 0))
+            self.surface.blit(value_text, (self.width - 150, 5))
+        
+        # Blit the plot surface onto the main surface
+        surface.blit(self.surface, (x, y))
 
-# Create trees on both sides of the road
-def generate_trees(num_trees):
-    trees = []
-    # Create a large enough world height
-    world_height = HEIGHT * 2
+# World manages all game world elements including road, trees, and race lines
+class GameWorld:
+    def __init__(self, baseline_speed=3.0, game_height=600):
+        self.baseline_speed = baseline_speed
+        self.game_height = game_height
+        
+        # Track distance calculation
+        self.target_time = 10.0  # 10 seconds to finish at baseline speed
+        fps = 60
+        self.track_distance = int(self.baseline_speed * fps * self.target_time)
+        
+        # Create the road texture
+        self.road_surface = self.create_road()
+        self.road_height = self.road_surface.get_height()
+        
+        # Start and finish line positions - positive = distance from start
+        self.start_line_position = 500
+        self.finish_line_position = self.start_line_position + self.track_distance
+        
+        # Create trees
+        self.trees = self.generate_trees(90)  # More trees for longer track
+        
+        # Race state
+        self.race_started = False
+        self.race_finished = False
+        self.start_time = None
+        self.finish_time = None
+        self.current_time = 0
+        self.best_time = None
+        self.passed_start_line = False
+        
+        # World position - increases as we move forward through the world
+        self.position = 0
+        
+        print(f"Track setup: Start at {self.start_line_position}, Finish at {self.finish_line_position}")
+
+    def create_road(self):
+        # Create road texture with markings
+        tile_size = 100  # Size of each road tile
+        num_tiles = 8    # How many tiles to create
+        
+        surface = pygame.Surface((road_width, tile_size * num_tiles))
+        surface.fill(ROAD_GRAY)
+        
+        # Draw center line (dashed)
+        dash_length = 40
+        gap_length = 20
+        line_width = 8
+        center_x = road_width // 2
+        
+        y = 0
+        while y < surface.get_height():
+            pygame.draw.rect(surface, LINE_WHITE, 
+                           (center_x - line_width//2, y, line_width, dash_length))
+            y += dash_length + gap_length
+        
+        # Draw edge lines
+        pygame.draw.rect(surface, LINE_WHITE, (5, 0, 3, surface.get_height()))
+        pygame.draw.rect(surface, LINE_WHITE, (road_width - 8, 0, 3, surface.get_height()))
+        
+        return surface
+        
+    def generate_trees(self, num_trees):
+        trees = []
+        # Create a large enough world to include finish line
+        world_length = self.finish_line_position + 1000
+        
+        for _ in range(num_trees):
+            # Choose which side of the road
+            if random.random() < 0.5:
+                # Left side
+                x = random.randint(50, road_left - 50)
+            else:
+                # Right side
+                x = random.randint(road_right + 10, WIDTH - 50)
+            
+            # Distribute trees evenly through world length
+            y = random.randint(0, world_length)
+            
+            # Choose a random tree image
+            img = random.choice(tree_imgs)
+            
+            trees.append((x, y, img))
+        
+        return trees
+        
+    def reset(self):
+        self.race_started = False
+        self.race_finished = False
+        self.start_time = None
+        self.finish_time = None
+        self.current_time = 0
+        self.passed_start_line = False
+        self.position = 0
+        
+    def update(self, speed):
+        # Update world position
+        self.position += speed
+        
+        # Check race progress
+        if not self.passed_start_line and self.position >= self.start_line_position:
+            self.passed_start_line = True
+            print(f"Passed start line! Position: {self.position}")
+            
+        # Start timer only after car has completely passed the start line (a little buffer)
+        if self.passed_start_line and not self.race_started and self.position >= (self.start_line_position + 20):
+            self.race_started = True
+            self.start_time = time.time()
+            print(f"Race started! Position: {self.position}")
+            
+        # Update timer if race has started but not finished
+        elif self.race_started and not self.race_finished:
+            self.current_time = time.time() - self.start_time
+            
+            # Check if car passed finish line
+            if self.position >= self.finish_line_position:
+                self.race_finished = True
+                self.finish_time = time.time()
+                finish_time = self.finish_time - self.start_time
+                print(f"Race finished! Time: {finish_time:.2f}s")
+                
+                # Update best time
+                if self.best_time is None or finish_time < self.best_time:
+                    self.best_time = finish_time
+        
+    def draw(self, surface, car_screen_y):
+        game_area_height = self.game_height
     
-    for _ in range(num_trees):
-        # Choose which side of the road
-        if random.random() < 0.5:
-            # Left side
-            x = random.randint(50, road_left - 50)
+        # Draw grass background
+        pygame.draw.rect(surface, GRASS_GREEN, (0, 0, road_left, game_area_height))
+        pygame.draw.rect(surface, GRASS_GREEN, (road_right, 0, WIDTH - road_right, game_area_height))
+        
+        # Draw road - moving upward
+        # Calculate position based on world position (mod road height for tiling)
+        road_offset = -(self.position % self.road_height)
+        
+        # Draw multiple copies of the road to fill the screen
+        current_y = road_offset
+        while current_y < game_area_height:
+            surface.blit(self.road_surface, (road_left, current_y))
+            current_y += self.road_height
+            
+        # Draw trees - all trees move upward as position increases
+        for x, pos, img in self.trees:
+            # Tree appears on screen based on its position relative to world position
+            screen_y = pos - self.position
+            
+            # Only draw if on screen
+            if -img.get_height() < screen_y < game_area_height:
+                surface.blit(img, (x, screen_y))
+        
+        # Draw start and finish lines
+        # Start line screen position
+        start_y = self.start_line_position - self.position
+        if -10 < start_y < game_area_height:
+            pygame.draw.rect(surface, START_LINE_COLOR, 
+                           (road_left, start_y, road_width, 10))
+            
+            # Add "START" text
+            font = pygame.font.SysFont(None, 36)
+            text = font.render("START", True, START_LINE_COLOR)
+            surface.blit(text, (road_left + road_width/2 - text.get_width()/2, start_y - 40))
+            
+        # Finish line screen position
+        finish_y = self.finish_line_position - self.position
+        if -10 < finish_y < game_area_height:
+            pygame.draw.rect(surface, FINISH_LINE_COLOR, 
+                           (road_left, finish_y, road_width, 10))
+                           
+            # Add "FINISH" text
+            font = pygame.font.SysFont(None, 36)
+            text = font.render("FINISH", True, FINISH_LINE_COLOR)
+            surface.blit(text, (road_left + road_width/2 - text.get_width()/2, finish_y - 40))
+            
+    def draw_timer(self, surface):
+        # Draw race information at the top of the screen
+        font = pygame.font.SysFont(None, 36)
+        
+        # Draw current time or final time
+        if self.race_finished:
+            finish_time = self.finish_time - self.start_time
+            time_text = f"Time: {finish_time:.2f}s"
+            time_color = (0, 200, 0) if finish_time == self.best_time else (0, 0, 0)
+        elif self.race_started:
+            time_text = f"Time: {self.current_time:.2f}s"
+            time_color = (0, 0, 0)
+        elif self.passed_start_line:
+            time_text = "Starting race..."
+            time_color = (0, 0, 200)
         else:
-            # Right side
-            x = random.randint(road_right + 10, WIDTH - 50)
+            time_text = "Ready to start"
+            time_color = (0, 0, 200)
+            
+        time_surface = font.render(time_text, True, time_color)
+        surface.blit(time_surface, (WIDTH // 2 - time_surface.get_width() // 2, 20))
         
-        # Distribute trees evenly in world space
-        y = random.randint(0, world_height)
+        # Draw best time if available
+        if self.best_time is not None:
+            best_text = f"Best: {self.best_time:.2f}s"
+            best_surface = font.render(best_text, True, (0, 0, 0))
+            surface.blit(best_surface, (WIDTH - best_surface.get_width() - 20, 20))
         
-        # Choose a random tree image
-        img = random.choice(tree_imgs)
+        # Draw race status indicators
+        indicator_y = 60
+        indicator_radius = 8
+        padding = 10
         
-        trees.append(Tree(img, x, y))
-    
-    return trees
+        # Start indicator
+        pygame.draw.circle(surface, 
+                         (200, 200, 100) if self.passed_start_line and not self.race_started else
+                         (START_LINE_COLOR if self.race_started else (200, 200, 200)), 
+                         (WIDTH // 2 - 50, indicator_y), 
+                         indicator_radius)
+                         
+        status_font = pygame.font.SysFont(None, 24)
+        start_text = status_font.render("Start", True, (0, 0, 0))
+        surface.blit(start_text, (WIDTH // 2 - 50 + indicator_radius + padding, indicator_y - 10))
+        
+        # Finish indicator
+        pygame.draw.circle(surface, 
+                         FINISH_LINE_COLOR if self.race_finished else (200, 200, 200), 
+                         (WIDTH // 2 + 50, indicator_y), 
+                         indicator_radius)
+                         
+        finish_text = status_font.render("Finish", True, (0, 0, 0))
+        surface.blit(finish_text, (WIDTH // 2 + 50 + indicator_radius + padding, indicator_y - 10))
 
-# Create a car with speed control via InputHandler
+# Car class with input-based speed control
 class Car:
     def __init__(self, img, x, y, input_handler):
         self.img = img
         self.x = x
-        self.y = y        # World Y position
-        self.screen_y = y # Fixed screen position
+        self.screen_y = y  # Fixed screen position
         self.input_handler = input_handler
         
         # Speed parameters
@@ -228,8 +465,6 @@ class Car:
         input_value = self.input_handler.get_value()
         
         # Map input value to speed (adjust ranges as needed)
-        # When input is around 0, speed is minimum
-        # When input is high (around 2.0+), speed is maximum
         if input_value <= 0:
             mapped_speed = self.min_speed
         else:
@@ -240,13 +475,10 @@ class Car:
         # Set car speed
         self.speed = mapped_speed
         
-        # Move car upward in world space
-        self.y -= self.speed
-        
         return self.speed
     
     def draw(self, surface):
-        # Always draw at the fixed screen position
+        # Draw car at its fixed screen position
         surface.blit(self.img, (self.x - self.img.get_width()//2, self.screen_y))
         
         # Draw speed indicator
@@ -275,22 +507,23 @@ class Car:
         pygame.draw.rect(surface, color, 
                         (bar_x, bar_y, fill_width, self.speed_bar_height))
 
-# Generate trees
-trees = generate_trees(30)
-
 # Initialize InputHandler in demo mode
 input_handler = InputHandler(demo_mode=True)
 
-# Create the car - at a fixed screen position
-car_screen_y = HEIGHT - 150
+# Create the car at a fixed screen position (centered, in lower part of screen)
+car_screen_y = HEIGHT - 200  # Adjust for plot area
 car = Car(car_img, WIDTH // 2, car_screen_y, input_handler)
 
-# Main game variables
-camera_y = 0  # Camera position in world coordinates
+# Create the game world
+game_world = GameWorld(baseline_speed=car.speed, game_height=HEIGHT - 100)
+
+# Create the signal plot
+signal_plot = SignalPlot(WIDTH, 100)  # 100 pixels tall plot
+
+# Game loop
 running = True
 clock = pygame.time.Clock()
 
-# Game loop
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -298,6 +531,9 @@ while running:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_q:
                 running = False
+            elif event.key == pygame.K_r:
+                # Reset race
+                game_world.reset()
             elif event.key == pygame.K_SPACE:
                 # Set key_pressed to True when space is pressed
                 input_handler.set_key_state(True)
@@ -306,54 +542,54 @@ while running:
                 # Set key_pressed to False when space is released
                 input_handler.set_key_state(False)
     
-    # Update car position and speed based on input
+    # Get input value and update signal plot
+    input_value = input_handler.get_value()
+    signal_plot.update(input_value)
+    
+    # Update car speed based on input
     current_speed = car.update()
     
-    # Camera follows car
-    camera_y = car.y - car_screen_y
+    # Update game world with car speed
+    game_world.update(current_speed)
     
     # Clear screen
     screen.fill(SKY_BLUE)
     
-    # Draw grass (simple colored rectangles)
-    pygame.draw.rect(screen, GRASS_GREEN, (0, 0, road_left, HEIGHT))
-    pygame.draw.rect(screen, GRASS_GREEN, (road_right, 0, WIDTH - road_right, HEIGHT))
-    
-    # Draw road
-    # Calculate the position of the road based on camera position
-    road_y = camera_y % road_height
-    
-    # Draw multiple copies of the road to fill the screen
-    for i in range(-1, 2):  # Draw one above, one on screen, one below
-        screen.blit(road_surface, (road_left, i * road_height - road_y))
-    
-    # Draw trees
-    for tree in trees:
-        tree.draw(screen, camera_y)
+    # Draw game world
+    game_world.draw(screen, car_screen_y)
     
     # Draw car
     car.draw(screen)
     
+    # Draw timer and race status
+    game_world.draw_timer(screen)
+    
+    # Show debug info
+    debug_font = pygame.font.SysFont(None, 20)
+    debug_text = f"Position: {game_world.position:.1f}, Start: {game_world.start_line_position}, Finish: {game_world.finish_line_position}"
+    debug = debug_font.render(debug_text, True, (0, 0, 0))
+    screen.blit(debug, (10, 100))
+    
+    # Draw separator line
+    pygame.draw.line(screen, (100, 100, 100), (0, HEIGHT - 100), (WIDTH, HEIGHT - 100), 2)
+    
+    # Draw signal plot at the bottom of the screen
+    signal_plot.draw(screen, 0, HEIGHT - 100)
+    
     # Show speed
-    font = pygame.font.SysFont(None, 36)
+    font = pygame.font.SysFont(None, 28)
     speed_text = f"Speed: {current_speed:.1f}"
     text_surface = font.render(speed_text, True, (0, 0, 0))
     screen.blit(text_surface, (20, 20))
     
-    # Show input value
-    input_value = input_handler.get_value()
-    input_text = f"Input: {input_value:.2f}"
-    input_surface = font.render(input_text, True, (0, 0, 0))
-    screen.blit(input_surface, (20, 60))
-    
     # Show controls
     controls_font = pygame.font.SysFont(None, 24)
     if input_handler.demo_mode:
-        controls_text = "SPACE: Accelerate | Q: Quit"
+        controls_text = "SPACE: Accelerate | R: Reset | Q: Quit"
     else:
-        controls_text = "Use EMG Input | Q: Quit"
+        controls_text = "Use EMG Input | R: Reset | Q: Quit"
     controls_surface = controls_font.render(controls_text, True, (0, 0, 0))
-    screen.blit(controls_surface, (20, 100))
+    screen.blit(controls_surface, (20, 60))
     
     # Update display
     pygame.display.flip()
