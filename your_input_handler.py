@@ -1,8 +1,8 @@
-from typing import Optional
-import numpy as np
-import threading
+from pathlib import Path
 import serial
+import struct
 import time
+import threading
 
 class ArduinoEMGHandler:
     """Handler for Arduino EMG shield serial communication"""
@@ -12,10 +12,9 @@ class ArduinoEMGHandler:
         self.baud_rate = baud_rate
         self.serial = None
         self.running = False
+        self.data_callback = None
         self.thread = None
         self.num_channels = 1
-        self.latest_values = [0.0] * self.num_channels
-        self.lock = threading.Lock()
         
         # Constants from Arduino firmware
         self.START_ESCAPE_SEQ = bytes([255, 255, 1, 1, 128, 255])
@@ -70,17 +69,12 @@ class ArduinoEMGHandler:
         """Set the number of channels to read"""
         if 1 <= num_channels <= 6:
             self.num_channels = num_channels
-            with self.lock:
-                self.latest_values = [0.0] * self.num_channels
             return self.send_command(f"c:{num_channels}")
         return False
     
-    def get_latest_value(self, channel=0):
-        """Get the latest value from the specified channel"""
-        with self.lock:
-            if 0 <= channel < len(self.latest_values):
-                return self.latest_values[channel]
-            return 0.0
+    def register_data_callback(self, callback):
+        """Register a callback to receive data"""
+        self.data_callback = callback
     
     def _read_thread(self):
         """Thread function to continuously read data"""
@@ -108,15 +102,12 @@ class ArduinoEMGHandler:
                                 high_byte = buffer[2*i] & 0x7F  # Remove start bit flag
                                 low_byte = buffer[2*i + 1] & 0x7F
                                 value = (high_byte << 7) | low_byte
-                                
-                                # Normalize value to 0.0-1.0 range (Arduino ADC is 10-bit: 0-1023)
-                                normalized_value = value / 1023.0
-                                frame_values.append(normalized_value)
+                                frame_values.append(value)
                             
                             if len(frame_values) == self.num_channels:
-                                # Store the latest values
-                                with self.lock:
-                                    self.latest_values = frame_values
+                                # Call the callback with the data
+                                if self.data_callback:
+                                    self.data_callback(frame_values)
                                 
                                 # Remove the processed frame from buffer
                                 buffer = buffer[2 * self.num_channels:]
@@ -134,6 +125,7 @@ class ArduinoEMGHandler:
                     if end_index > start_index:
                         # Extract the message
                         message = buffer[start_index + len(self.START_ESCAPE_SEQ):end_index]
+                        print(f"Received message from Arduino: {message.decode('ascii', errors='ignore')}")
                         # Remove the processed message from buffer
                         buffer = buffer[end_index + len(self.END_ESCAPE_SEQ):]
                             
@@ -172,51 +164,39 @@ class ArduinoEMGHandler:
         self.running = False
         if self.thread:
             self.thread.join(timeout=1.0)
-            self.thread = None
+            self.thread = None 
 
 
-class InputHandler:
-    def __init__(self, demo_mode: bool = True, port: Optional[str] = None):
-        self.demo_mode = demo_mode
-        self.port = port
-        self.emg_handler = None
-        self.key_pressed = False
+if __name__ == "__main__":
+    import time
+
+    def on_data_received(data):
+        print(f"EMG data: {data}")
+
+    # Create the handler
+    emg_handler = ArduinoEMGHandler(port="/dev/cu.usbserial-10")  # Adjust port as needed
+
+    # Connect to the device
+    if emg_handler.connect():
+        print("Connected to Arduino")
         
-        if not demo_mode and port:
-            self._setup_arduino()
-            
-    def _setup_arduino(self):
+        # Set number of channels (optional, default is 1)
+        emg_handler.set_channels(1)
+        
+        # Register callback for data
+        emg_handler.register_data_callback(on_data_received)
+        
+        # Start reading data
+        emg_handler.start_reading()
+        
         try:
-            self.emg_handler = ArduinoEMGHandler(port=self.port)
-            if not self.emg_handler.connect():
-                raise RuntimeError(f"Failed to connect to Arduino on port {self.port}")
-            
-            # Start reading data
-            self.emg_handler.start_reading()
-            
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize Arduino: {e}")
-            
-    def set_key_state(self, pressed: bool):
-        """Update the key press state for demo mode."""
-        self.key_pressed = pressed
-            
-    def get_value(self) -> float:
-        if self.demo_mode:
-            # In demo mode, return biased random values based on key press
-            if self.key_pressed:
-                # When key is pressed, generate positive values with higher mean
-                return np.random.normal(2.0, 0.5)
-            else:
-                # When key is not pressed, generate values around zero
-                return np.random.normal(0.0, 0.2)
-        else:
-            # Read from Arduino EMG handler
-            if not self.emg_handler:
-                raise RuntimeError("Arduino not initialized")
-            # Get the latest value from channel 0
-            return self.emg_handler.get_latest_value(0)
-            
-    def __del__(self):
-        if self.emg_handler:
-            self.emg_handler.disconnect() 
+            # Keep the program running
+            while True:
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("Stopping...")
+        finally:
+            # Disconnect when done
+            emg_handler.disconnect()
+    else:
+        print("Failed to connect to Arduino")
