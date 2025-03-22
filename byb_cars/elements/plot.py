@@ -1,55 +1,25 @@
 import pygame
 import numpy as np
-from dataclasses import dataclass
 from byb_cars import defaults
-
-
-@dataclass
-class PlotConfig:
-    # Buffer configuration
-    buffer_size: int = 200
-    
-    # Plot layout
-    plot_margin: int = 10
-    
-    # Y-axis configuration
-    y_min: float = 0.0
-    y_max: float = 3.0
-    y_max_headroom_factor: float = 1.2  # Multiplier for dynamic y-max adjustment
-    
-    # Grid configuration
-    grid_lines: int = 4
-    
-    # Threshold configuration
-    threshold_value: float = 1.0
-    
-    # Text configuration
-    axis_font_size: int = 20
-    title_font_size: int = 24
-    label_y_offset: int = 10
-    title_y_offset: int = 5
-    current_value_x_offset: int = 150
-    
-    # Colors are already in defaults
+from byb_cars.elements.layout_config import layout
 
 
 # Signal Plot class (similar to PyQtGraph implementation in main.py)
 class SignalPlot:
-    def __init__(self, width, height, config=None):
+    def __init__(self, width, height):
         self.width = width
         self.height = height
-        self.config = config or PlotConfig()
-        self.buffer_size = self.config.buffer_size
+        self.buffer_size = 200  # Keep buffer size as it's not a layout parameter
         self.signal_buffer = np.zeros(self.buffer_size)
         self.surface = pygame.Surface((width, height))
 
         # Plot boundaries
-        self.plot_width = width - 2 * self.config.plot_margin
-        self.plot_height = height - 2 * self.config.plot_margin
+        self.plot_width = width - 2 * layout.plot_margin
+        self.plot_height = height - 2 * layout.plot_margin
 
-        # Y-axis scaling
-        self.y_min = self.config.y_min
-        self.y_max = self.config.y_max  # Maximum expected signal value
+        # Y-axis scaling (not layout, but kept here for simplicity)
+        self.y_min = 0.0
+        self.y_max = 3.0  # Maximum expected signal value
 
     def update(self, new_value):
         # Roll buffer and add new value
@@ -58,7 +28,7 @@ class SignalPlot:
 
         # Dynamically adjust y-axis if needed
         if new_value > self.y_max:
-            self.y_max = new_value * self.config.y_max_headroom_factor
+            self.y_max = new_value * 1.2  # Add 20% headroom
 
     def draw(self, surface, x, y):
         # Clear plot area
@@ -68,52 +38,53 @@ class SignalPlot:
         pygame.draw.rect(
             self.surface,
             (0, 0, 0),
-            (self.config.plot_margin, self.config.plot_margin, self.plot_width, self.plot_height),
+            (layout.plot_margin, layout.plot_margin, self.plot_width, self.plot_height),
             1,
         )
 
         # Draw grid lines
-        for i in range(1, self.config.grid_lines):
-            y_pos = self.config.plot_margin + i * self.plot_height // self.config.grid_lines
+        for i in range(1, layout.plot_grid_lines):
+            y_pos = layout.plot_margin + i * self.plot_height // layout.plot_grid_lines
             pygame.draw.line(
                 self.surface,
                 defaults.PLOT_GRID,
-                (self.config.plot_margin, y_pos),
-                (self.config.plot_margin + self.plot_width, y_pos),
+                (layout.plot_margin, y_pos),
+                (layout.plot_margin + self.plot_width, y_pos),
                 1,
             )
 
             # Add y-axis labels
-            font = pygame.font.SysFont(None, self.config.axis_font_size)
-            value = self.y_max * (self.config.grid_lines - i) / self.config.grid_lines
-            label = font.render(f"{value:.1f}", True, (0, 0, 0))
-            self.surface.blit(label, (self.config.plot_margin - 5, y_pos - self.config.label_y_offset))
+            font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.small_size)
+            value = self.y_max * (layout.plot_grid_lines - i) / layout.plot_grid_lines
+            label = font.render(f"{value:.1f}", True, layout.fonts.normal_color)
+            self.surface.blit(label, (layout.plot_margin - 5, y_pos - layout.plot_label_y_offset))
 
-        # Draw threshold line at threshold_value
+        # Draw threshold line at 1.0
+        threshold_value = 1.0  # Keep this as it's a business logic parameter
         threshold_y = (
-            self.config.plot_margin + self.plot_height 
-            - (self.config.threshold_value / self.y_max * self.plot_height)
+            layout.plot_margin + self.plot_height 
+            - (threshold_value / self.y_max * self.plot_height)
         )
         pygame.draw.line(
             self.surface,
             defaults.THRESHOLD_LINE,
-            (self.config.plot_margin, threshold_y),
-            (self.config.plot_margin + self.plot_width, threshold_y),
+            (layout.plot_margin, threshold_y),
+            (layout.plot_margin + self.plot_width, threshold_y),
             1,
         )
 
         # Draw signal line
         points = []
         for i in range(self.buffer_size):
-            x_pos = self.config.plot_margin + i * self.plot_width / (self.buffer_size - 1)
+            x_pos = layout.plot_margin + i * self.plot_width / (self.buffer_size - 1)
             # Scale value to plot height (flipped, as pygame y increases downward)
             y_pos = (
-                self.config.plot_margin
+                layout.plot_margin
                 + self.plot_height
                 - (self.signal_buffer[i] / self.y_max * self.plot_height)
             )
             y_pos = min(
-                self.config.plot_margin + self.plot_height, max(self.config.plot_margin, y_pos)
+                layout.plot_margin + self.plot_height, max(layout.plot_margin, y_pos)
             )  # Clamp to plot area
             points.append((x_pos, y_pos))
 
@@ -122,20 +93,20 @@ class SignalPlot:
             pygame.draw.lines(self.surface, defaults.PLOT_LINE, False, points, 2)
 
         # Add title and labels
-        font = pygame.font.SysFont(None, self.config.title_font_size)
-        title = font.render("EMG Signal", True, (0, 0, 0))
+        font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.normal_size)
+        title = font.render("EMG Signal", True, layout.fonts.normal_color)
         self.surface.blit(
             title, 
-            (self.width // 2 - title.get_width() // 2, self.config.title_y_offset)
+            (self.width // 2 - title.get_width() // 2, layout.plot_title_y_offset)
         )
 
         # Current value
         if len(self.signal_buffer) > 0:
             current_value = self.signal_buffer[-1]
-            value_text = font.render(f"Current: {current_value:.2f}", True, (0, 0, 0))
+            value_text = font.render(f"Current: {current_value:.2f}", True, layout.fonts.normal_color)
             self.surface.blit(
                 value_text, 
-                (self.width - self.config.current_value_x_offset, self.config.title_y_offset)
+                (self.width - layout.plot_value_x_offset, layout.plot_title_y_offset)
             )
 
         # Blit the plot surface onto the main surface

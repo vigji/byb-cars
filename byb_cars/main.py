@@ -5,12 +5,45 @@ import requests
 from pathlib import Path
 import numpy as np
 import time
-import argparse  # Added for command line arguments
+import argparse
+import json
+from dataclasses import dataclass, asdict, field
+from typing import List, Dict, Optional
 
 # Import the InputHandler
 from byb_cars.input_handler import InputHandler
-from byb_cars.elements import Car, SignalPlot, GameWorld
+from byb_cars.elements import Car, SignalPlot, GameWorld, ScoreManager, get_username, show_high_scores
 from byb_cars import defaults
+from byb_cars.elements.layout_config import layout
+
+
+@dataclass
+class MainConfig:
+    # Screen layout
+    car_offset_from_bottom: int = 200
+    plot_height: int = 100
+    game_height_offset: int = 100
+    
+    # Separator line
+    separator_line_width: int = 2
+    separator_line_color: tuple = (100, 100, 100)
+    
+    # Font sizes
+    debug_font_size: int = 20
+    speed_font_size: int = 28
+    controls_font_size: int = 24
+    
+    # Text positions with vertical spacing
+    speed_text_pos: tuple = (20, 20)  # Keep speed at top
+    user_text_pos: tuple = (defaults.WIDTH - 200, 20)  # User name at top right
+    controls_text_pos: tuple = (20, 60)  # Controls below speed
+    debug_text_pos: tuple = (10, 100)  # Debug below controls
+    
+    # Animation
+    fps: int = 60
+
+main_config = MainConfig()
+
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Scrolling Road with EMG Control")
@@ -30,12 +63,24 @@ args = parser.parse_args()
 # Determine if we're running in demo mode
 demo_mode = True if args.demo else (args.port is None)
 
+# Initialize configuration
+config = MainConfig()
+
+# Initialize score manager
+score_manager = ScoreManager()
+print(f"Loaded {len(score_manager.scores)} scores")
+
 # Initialize Pygame
 pygame.init()
 
 # Screen dimensions
-screen = pygame.display.set_mode((defaults.WIDTH, defaults.HEIGHT))
+screen = pygame.display.set_mode((layout.screen_width, layout.screen_height))
 pygame.display.set_caption("Scrolling Road with Car")
+
+# Get initial username
+current_username = get_username(screen)
+user_best_time = score_manager.get_best_time(current_username)
+print(f"Best time for {current_username}: {user_best_time}")
 
 # Initialize InputHandler with command line parameters
 input_handler = InputHandler(demo_mode=demo_mode, port=args.port)
@@ -46,19 +91,27 @@ if demo_mode:
 else:
     print(f"Connected to Arduino on port: {args.port}")
 
-# Create the car at a fixed screen position (centered, in lower part of screen)
-car_screen_y = defaults.HEIGHT - 200  # Adjust for plot area
-car = Car(defaults.WIDTH // 2, car_screen_y, input_handler)
+# Calculate positions based on config
+car_screen_y = defaults.HEIGHT - config.car_offset_from_bottom
+plot_y = defaults.HEIGHT - config.plot_height
 
-# Create the game world
-game_world = GameWorld(game_height=defaults.HEIGHT - 100)
+# Create the car at a fixed screen position (centered, in lower part of screen)
+car = Car(layout.screen_width // 2, layout.car_screen_y, input_handler)
+
+# Create the game world - get user's best time if available
+user_best_time = score_manager.get_best_time(current_username)
+game_world = GameWorld(game_height=defaults.HEIGHT - config.game_height_offset)
+if user_best_time is not None:
+    game_world.best_time = user_best_time
+    print(f"Loaded best time for {current_username}: {user_best_time}")
 
 # Create the signal plot
-signal_plot = SignalPlot(defaults.WIDTH, 100)  # 100 pixels tall plot
+signal_plot = SignalPlot(layout.screen_width, layout.plot_height)
 
 # Game loop
 running = True
 clock = pygame.time.Clock()
+show_scores = False
 
 while running:
     for event in pygame.event.get():
@@ -68,8 +121,19 @@ while running:
             if event.key == pygame.K_q:
                 running = False
             elif event.key == pygame.K_r:
-                # Reset race
+                # Reset race and potentially get new username
                 game_world.reset()
+                # Remove the score saved flag so new scores will be saved
+                if hasattr(game_world, '_score_saved'):
+                    delattr(game_world, '_score_saved')
+                current_username = get_username(screen)
+                # Update user's best time
+                user_best_time = score_manager.get_best_time(current_username)
+                if user_best_time is not None:
+                    game_world.best_time = user_best_time
+            elif event.key == pygame.K_h:
+                # Show high scores
+                show_high_scores(screen, score_manager)
             elif event.key == pygame.K_SPACE:
                 # Set key_pressed to True when space is pressed
                 input_handler.set_key_state(True)
@@ -77,6 +141,12 @@ while running:
             if event.key == pygame.K_SPACE:
                 # Set key_pressed to False when space is released
                 input_handler.set_key_state(False)
+
+    # Handle high score display
+    if show_scores:
+        show_high_scores(screen, score_manager)
+        show_scores = False
+        continue
 
     # Get input value and update signal plot
     input_value = input_handler.get_value()
@@ -88,11 +158,18 @@ while running:
     # Update game world with car speed
     game_world.update(current_speed)
 
+    # Check if race just finished and save score
+    if game_world.race_finished and game_world.finish_time and not hasattr(game_world, '_score_saved'):
+        finish_time = game_world.finish_time - game_world.start_time
+        score_manager.add_score(current_username, finish_time)
+        # Mark that we've saved this score
+        game_world._score_saved = True
+
     # Clear screen
     screen.fill(defaults.SKY_BLUE)
 
     # Draw game world
-    game_world.draw(screen, car_screen_y)
+    game_world.draw(screen, layout.car_screen_y)
 
     # Draw car
     car.draw(screen)
@@ -101,41 +178,46 @@ while running:
     game_world.draw_timer(screen)
 
     # Show debug info
-    debug_font = pygame.font.SysFont(None, 20)
+    debug_font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.debug_size)
     debug_text = f"Position: {game_world.position:.1f}, Start: {game_world.start_line_position}, Finish: {game_world.finish_line_position}"
-    debug = debug_font.render(debug_text, True, (0, 0, 0))
-    screen.blit(debug, (10, 100))
+    debug = debug_font.render(debug_text, True, layout.fonts.normal_color)
+    screen.blit(debug, layout.debug_text_pos)
 
     # Draw separator line
     pygame.draw.line(
         screen,
-        (100, 100, 100),
-        (0, defaults.HEIGHT - 100),
-        (defaults.WIDTH, defaults.HEIGHT - 100),
-        2,
+        layout.separator_line_color,
+        (0, layout.separator_line_y),
+        (layout.screen_width, layout.separator_line_y),
+        layout.separator_line_width,
     )
 
     # Draw signal plot at the bottom of the screen
-    signal_plot.draw(screen, 0, defaults.HEIGHT - 100)
+    signal_plot.draw(screen, 0, layout.plot_y)
 
     # Show speed
-    font = pygame.font.SysFont(None, 28)
+    font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.normal_size)
     speed_text = f"Speed: {current_speed:.1f}"
-    text_surface = font.render(speed_text, True, (0, 0, 0))
-    screen.blit(text_surface, (20, 20))
+    text_surface = font.render(speed_text, True, layout.fonts.normal_color)
+    screen.blit(text_surface, layout.speed_text_pos)
+
+    # Show current user (use the configured position)
+    user_text = f"User: {current_username}"
+    user_surface = font.render(user_text, True, layout.fonts.normal_color)
+    screen.blit(user_surface, layout.user_text_pos)
 
     # Show controls
-    controls_font = pygame.font.SysFont(None, 24)
+    controls_font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.small_size)
     if input_handler.demo_mode:
-        controls_text = "SPACE: Accelerate | R: Reset | Q: Quit"
+        controls_text = "SPACE: Accelerate | R: Reset | H: High Scores | Q: Quit"
     else:
-        controls_text = "Use EMG Input | R: Reset | Q: Quit"
-    controls_surface = controls_font.render(controls_text, True, (0, 0, 0))
-    screen.blit(controls_surface, (20, 60))
+        controls_text = "Use EMG Input | R: Reset | H: High Scores | Q: Quit"
+    controls_surface = controls_font.render(controls_text, True, layout.fonts.normal_color)
+    screen.blit(controls_surface, layout.controls_text_pos)
 
     # Update display
     pygame.display.flip()
-    clock.tick(60)
+    clock.tick(main_config.fps)
 
 pygame.quit()
 sys.exit()
