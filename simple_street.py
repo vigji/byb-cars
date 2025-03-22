@@ -222,7 +222,7 @@ class GameWorld:
         self.baseline_speed = baseline_speed
         self.game_height = game_height
         
-        # Track distance calculation
+        # Track distance calculation - increased for more stable experience
         self.target_time = 10.0  # 10 seconds to finish at baseline speed
         fps = 60
         self.track_distance = int(self.baseline_speed * fps * self.target_time)
@@ -236,7 +236,7 @@ class GameWorld:
         self.finish_line_position = self.start_line_position + self.track_distance
         
         # Create trees
-        self.trees = self.generate_trees(90)  # More trees for longer track
+        self.trees = self.generate_trees(120)  # More trees for longer track
         
         # Race state
         self.race_started = False
@@ -250,12 +250,15 @@ class GameWorld:
         # World position - increases as we move forward through the world
         self.position = 0
         
+        # Store the car's screen position for line crossing calculations
+        self.car_screen_y = None
+        
         print(f"Track setup: Start at {self.start_line_position}, Finish at {self.finish_line_position}")
 
     def create_road(self):
         # Create road texture with markings
         tile_size = 100  # Size of each road tile
-        num_tiles = 8    # How many tiles to create
+        num_tiles = 10   # Increased number of tiles for more coverage
         
         surface = pygame.Surface((road_width, tile_size * num_tiles))
         surface.fill(ROAD_GRAY)
@@ -315,23 +318,30 @@ class GameWorld:
         # Update world position
         self.position += speed
         
-        # Check race progress
-        if not self.passed_start_line and self.position >= self.start_line_position:
+        # We need car_screen_y to be set for proper line crossing detection
+        # (This will be set when draw() is called)
+        if self.car_screen_y is None:
+            return
+        
+        # Calculate where the start line appears on screen
+        start_line_screen_y = self.position - self.start_line_position
+        
+        # Calculate where the finish line appears on screen
+        finish_line_screen_y = self.position - self.finish_line_position
+        
+        # Check if start line has just crossed the car (disappeared off the bottom)
+        if not self.race_started and not self.race_finished and start_line_screen_y > self.car_screen_y + 20:
             self.passed_start_line = True
-            print(f"Passed start line! Position: {self.position}")
-            
-        # Start timer only after car has completely passed the start line (a little buffer)
-        if self.passed_start_line and not self.race_started and self.position >= (self.start_line_position + 20):
             self.race_started = True
             self.start_time = time.time()
-            print(f"Race started! Position: {self.position}")
+            print(f"Race started! Start line crossed car at position: {self.position}")
             
         # Update timer if race has started but not finished
         elif self.race_started and not self.race_finished:
             self.current_time = time.time() - self.start_time
             
-            # Check if car passed finish line
-            if self.position >= self.finish_line_position:
+            # Check if finish line has just crossed the car (disappeared off the bottom)
+            if finish_line_screen_y > self.car_screen_y + 20:
                 self.race_finished = True
                 self.finish_time = time.time()
                 finish_time = self.finish_time - self.start_time
@@ -342,26 +352,34 @@ class GameWorld:
                     self.best_time = finish_time
         
     def draw(self, surface, car_screen_y):
+        # Store car_screen_y for line crossing detection
+        self.car_screen_y = car_screen_y
+        
         game_area_height = self.game_height
     
+        # Fill entire game area with sky blue (to avoid any previous draws)
+        surface.fill(SKY_BLUE, (0, 0, WIDTH, game_area_height))
+        
         # Draw grass background
         pygame.draw.rect(surface, GRASS_GREEN, (0, 0, road_left, game_area_height))
         pygame.draw.rect(surface, GRASS_GREEN, (road_right, 0, WIDTH - road_right, game_area_height))
         
-        # Draw road - moving upward
-        # Calculate position based on world position (mod road height for tiling)
-        road_offset = -(self.position % self.road_height)
+        # Draw road - moving downward with improved tiling
+        road_offset = int(self.position % self.road_height)
+        
+        # Draw one additional tile above the viewport to avoid gaps
+        y_start = road_offset - self.road_height
         
         # Draw multiple copies of the road to fill the screen
-        current_y = road_offset
+        current_y = y_start
         while current_y < game_area_height:
             surface.blit(self.road_surface, (road_left, current_y))
             current_y += self.road_height
             
-        # Draw trees - all trees move upward as position increases
+        # Draw trees - all trees move downward as position increases
         for x, pos, img in self.trees:
             # Tree appears on screen based on its position relative to world position
-            screen_y = pos - self.position
+            screen_y = self.position - pos
             
             # Only draw if on screen
             if -img.get_height() < screen_y < game_area_height:
@@ -369,7 +387,7 @@ class GameWorld:
         
         # Draw start and finish lines
         # Start line screen position
-        start_y = self.start_line_position - self.position
+        start_y = self.position - self.start_line_position
         if -10 < start_y < game_area_height:
             pygame.draw.rect(surface, START_LINE_COLOR, 
                            (road_left, start_y, road_width, 10))
@@ -380,7 +398,7 @@ class GameWorld:
             surface.blit(text, (road_left + road_width/2 - text.get_width()/2, start_y - 40))
             
         # Finish line screen position
-        finish_y = self.finish_line_position - self.position
+        finish_y = self.position - self.finish_line_position
         if -10 < finish_y < game_area_height:
             pygame.draw.rect(surface, FINISH_LINE_COLOR, 
                            (road_left, finish_y, road_width, 10))
