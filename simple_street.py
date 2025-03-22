@@ -253,6 +253,12 @@ class GameWorld:
         # Store the car's screen position for line crossing calculations
         self.car_screen_y = None
         
+        # Create checkerboard patterns for start and finish lines
+        self.start_line_height = 30
+        self.finish_line_height = 30
+        self.start_line_surface = self.create_checkerboard(road_width, self.start_line_height)
+        self.finish_line_surface = self.create_checkerboard(road_width, self.finish_line_height, size=15)  # Smaller squares
+        
         print(f"Track setup: Start at {self.start_line_position}, Finish at {self.finish_line_position}")
 
     def create_road(self):
@@ -385,27 +391,34 @@ class GameWorld:
             if -img.get_height() < screen_y < game_area_height:
                 surface.blit(img, (x, screen_y))
         
-        # Draw start and finish lines
-        # Start line screen position
+        # Draw start and finish lines as checkerboards
         start_y = self.position - self.start_line_position
-        if -10 < start_y < game_area_height:
-            pygame.draw.rect(surface, START_LINE_COLOR, 
-                           (road_left, start_y, road_width, 10))
+        if -self.start_line_height < start_y < game_area_height:
+            surface.blit(self.start_line_surface, (road_left, start_y))
             
             # Add "START" text
             font = pygame.font.SysFont(None, 36)
-            text = font.render("START", True, START_LINE_COLOR)
+            text = font.render("START", True, (255, 255, 255))
+            # Add a background to make text more visible
+            text_bg = pygame.Surface((text.get_width() + 10, text.get_height() + 10))
+            text_bg.fill((0, 0, 0))
+            text_bg.set_alpha(180)  # Semi-transparent
+            surface.blit(text_bg, (road_left + road_width/2 - text.get_width()/2 - 5, start_y - 45))
             surface.blit(text, (road_left + road_width/2 - text.get_width()/2, start_y - 40))
             
         # Finish line screen position
         finish_y = self.position - self.finish_line_position
-        if -10 < finish_y < game_area_height:
-            pygame.draw.rect(surface, FINISH_LINE_COLOR, 
-                           (road_left, finish_y, road_width, 10))
+        if -self.finish_line_height < finish_y < game_area_height:
+            surface.blit(self.finish_line_surface, (road_left, finish_y))
                            
             # Add "FINISH" text
             font = pygame.font.SysFont(None, 36)
-            text = font.render("FINISH", True, FINISH_LINE_COLOR)
+            text = font.render("FINISH", True, (255, 255, 255))
+            # Add a background to make text more visible
+            text_bg = pygame.Surface((text.get_width() + 10, text.get_height() + 10))
+            text_bg.fill((0, 0, 0))
+            text_bg.set_alpha(180)  # Semi-transparent
+            surface.blit(text_bg, (road_left + road_width/2 - text.get_width()/2 - 5, finish_y - 45))
             surface.blit(text, (road_left + road_width/2 - text.get_width()/2, finish_y - 40))
             
     def draw_timer(self, surface):
@@ -460,6 +473,26 @@ class GameWorld:
                          
         finish_text = status_font.render("Finish", True, (0, 0, 0))
         surface.blit(finish_text, (WIDTH // 2 + 50 + indicator_radius + padding, indicator_y - 10))
+
+    def create_checkerboard(self, width, height, size=20, colors=((255, 255, 255), (0, 0, 0))):
+        """Create a checkerboard pattern surface."""
+        # Create a surface for the checkerboard
+        surface = pygame.Surface((width, height))
+        surface.fill(colors[0])  # Fill with first color as background
+        
+        # Calculate number of squares
+        cols = width // size + 1
+        rows = height // size + 1
+        
+        # Draw the checkerboard pattern
+        for row in range(rows):
+            for col in range(cols):
+                # Alternate colors
+                if (row + col) % 2 == 1:
+                    pygame.draw.rect(surface, colors[1], 
+                                   (col * size, row * size, size, size))
+        
+        return surface
 
 # Car class with input-based speed control
 class Car:
