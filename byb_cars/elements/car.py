@@ -7,7 +7,7 @@ from byb_cars.elements.layout_config import layout
 
 @dataclass
 class CarConfig:
-    min_speed: float = 0.5
+    min_speed: float = 0.1
     max_speed: float = 8.0
     default_speed: float = 3.0
     input_mapping_divisor: float = 3.0

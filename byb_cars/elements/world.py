@@ -20,7 +20,7 @@ class WorldConfig:
     road_width_fraction: float = 1/3  # Road width as a fraction of screen width
     
     # World elements
-    num_trees: int = 120
+    num_trees: int = 1200
     tree_min_side_offset: int = 50
     tree_min_road_offset: int = 10
     tree_height: int = 120
@@ -37,10 +37,10 @@ class WorldConfig:
     edge_line_offset: int = 5
     
     # Start/finish lines
-    start_line_height: int = 30
-    finish_line_height: int = 30
+    start_finish_line_height: int = 30
+    # finish_line_height: int = 30
     checkerboard_size: int = 15
-    finish_checkerboard_size: int = 15
+    # finish_checkerboard_size: int = 15
     
     # Text configuration
     start_finish_font_size: int = 36
@@ -100,11 +100,11 @@ class GameWorld:
 
         # Create checkerboard patterns for start and finish lines
         self.start_line_surface = self.create_checkerboard(
-            self.road_width, world_config.start_line_height, size=world_config.checkerboard_size
+            self.road_width, world_config.start_finish_line_height, size=world_config.checkerboard_size
         )
         self.finish_line_surface = self.create_checkerboard(
             self.road_width, 
-            world_config.finish_line_height, 
+            world_config.start_finish_line_height, 
             size=world_config.checkerboard_size
         )
 
@@ -155,6 +155,12 @@ class GameWorld:
         world_length = self.finish_line_position + 1000
 
         for _ in range(num_trees):
+
+            # Choose a random tree image
+            img = random.choice(self.tree_imgs)
+            img_width = img.get_width()
+            img_height = img.get_height()
+            
             # Choose which side of the road
             if random.random() < 0.5:
                 # Left side
@@ -162,18 +168,18 @@ class GameWorld:
                     world_config.tree_min_side_offset, 
                     self.road_left - world_config.tree_min_side_offset
                 )
+                x -= img_width//2
+
             else:
                 # Right side
                 x = random.randint(
                     self.road_right + world_config.tree_min_road_offset, 
                     defaults.WIDTH - world_config.tree_min_side_offset
                 )
-
+                x -= img_width//2
             # Distribute trees evenly through world length
             y = random.randint(0, world_length)
 
-            # Choose a random tree image
-            img = random.choice(self.tree_imgs)
 
             trees.append((x, y, img))
 
@@ -260,7 +266,43 @@ class GameWorld:
             surface.blit(self.road_surface, (self.road_left, current_y))
             current_y += self.road_height
 
-        # Draw trees - all trees move downward as position increases
+        # Draw start and finish lines as checkerboards
+        for line_type in ['start', 'finish']:
+            # Calculate y position based on line type
+            y = self.position - (self.start_line_position if line_type == 'start' else self.finish_line_position)
+            
+            if -world_config.start_finish_line_height < y < game_area_height:
+                # Draw checkerboard line
+                surface.blit(
+                    self.start_line_surface if line_type == 'start' else self.finish_line_surface,
+                    (self.road_left, y)
+                )
+
+                # Add text
+                font = pygame.font.SysFont(layout.fonts.default_font, world_config.start_finish_font_size)
+                text = font.render(line_type.upper(), True, (255, 255, 255))
+                
+                # Add a background to make text more visible
+                text_bg = pygame.Surface(
+                    (text.get_width() + 2*world_config.text_bg_padding,
+                     text.get_height() + 2*world_config.text_bg_padding)
+                )
+                text_bg.fill((0, 0, 0))
+                text_bg.set_alpha(world_config.text_bg_alpha)  # Semi-transparent
+                
+                # Calculate x position for centered text
+                text_x = self.road_left + self.road_width / 2 - text.get_width() / 2
+                text_y = y - world_config.text_y_offset
+                
+                # Draw text background and text
+                surface.blit(
+                    text_bg,
+                    (text_x - world_config.text_bg_padding,
+                     text_y - world_config.text_bg_padding)
+                )
+                surface.blit(text, (text_x, text_y))
+
+    # Draw trees - all trees move downward as position increases
         for x, pos, img in self.trees:
             # Tree appears on screen based on its position relative to world position
             screen_y = self.position - pos
@@ -268,66 +310,6 @@ class GameWorld:
             # Only draw if on screen
             if -img.get_height() < screen_y < game_area_height:
                 surface.blit(img, (x, screen_y))
-
-        # Draw start and finish lines as checkerboards
-        start_y = self.position - self.start_line_position
-        if -world_config.start_line_height < start_y < game_area_height:
-            surface.blit(self.start_line_surface, (self.road_left, start_y))
-
-            # Add "START" text
-            font = pygame.font.SysFont(layout.fonts.default_font, world_config.start_finish_font_size)
-            text = font.render("START", True, (255, 255, 255))
-            # Add a background to make text more visible
-            text_bg = pygame.Surface(
-                (text.get_width() + 2*world_config.text_bg_padding, 
-                 text.get_height() + 2*world_config.text_bg_padding)
-            )
-            text_bg.fill((0, 0, 0))
-            text_bg.set_alpha(world_config.text_bg_alpha)  # Semi-transparent
-            surface.blit(
-                text_bg,
-                (
-                    self.road_left + self.road_width / 2 - text.get_width() / 2 - world_config.text_bg_padding,
-                    start_y - world_config.text_y_offset - world_config.text_bg_padding,
-                ),
-            )
-            surface.blit(
-                text,
-                (
-                    self.road_left + self.road_width / 2 - text.get_width() / 2,
-                    start_y - world_config.text_y_offset,
-                ),
-            )
-
-        # Finish line screen position
-        finish_y = self.position - self.finish_line_position
-        if -world_config.finish_line_height < finish_y < game_area_height:
-            surface.blit(self.finish_line_surface, (self.road_left, finish_y))
-
-            # Add "FINISH" text
-            font = pygame.font.SysFont(layout.fonts.default_font, world_config.start_finish_font_size)
-            text = font.render("FINISH", True, (255, 255, 255))
-            # Add a background to make text more visible
-            text_bg = pygame.Surface(
-                (text.get_width() + 2*world_config.text_bg_padding, 
-                 text.get_height() + 2*world_config.text_bg_padding)
-            )
-            text_bg.fill((0, 0, 0))
-            text_bg.set_alpha(world_config.text_bg_alpha)  # Semi-transparent
-            surface.blit(
-                text_bg,
-                (
-                    self.road_left + self.road_width / 2 - text.get_width() / 2 - world_config.text_bg_padding,
-                    finish_y - world_config.text_y_offset - world_config.text_bg_padding,
-                ),
-            )
-            surface.blit(
-                text,
-                (
-                    self.road_left + self.road_width / 2 - text.get_width() / 2,
-                    finish_y - world_config.text_y_offset,
-                ),
-            )
 
     def draw_timer(self, surface):
         # Draw race information at the top of the screen
