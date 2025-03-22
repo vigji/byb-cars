@@ -11,12 +11,20 @@ import argparse  # Added for command line arguments
 from byb_cars.input_handler import InputHandler
 from byb_cars.elements import Car, SignalPlot, GameWorld
 from byb_cars import defaults
+
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Scrolling Road with EMG Control")
-parser.add_argument("--demo", action="store_true", 
-                    help="Run in demo mode with keyboard control instead of EMG")
-parser.add_argument("--port", type=str, default=None,
-                    help="Serial port for Arduino (e.g., COM3 on Windows, /dev/ttyACM0 on Linux)")
+parser.add_argument(
+    "--demo",
+    action="store_true",
+    help="Run in demo mode with keyboard control instead of EMG",
+)
+parser.add_argument(
+    "--port",
+    type=str,
+    default=None,
+    help="Serial port for Arduino (e.g., COM3 on Windows, /dev/ttyACM0 on Linux)",
+)
 args = parser.parse_args()
 
 # Determine if we're running in demo mode
@@ -69,47 +77,53 @@ while running:
             if event.key == pygame.K_SPACE:
                 # Set key_pressed to False when space is released
                 input_handler.set_key_state(False)
-    
+
     # Get input value and update signal plot
     input_value = input_handler.get_value()
     signal_plot.update(input_value)
-    
+
     # Update car speed based on input
     current_speed = car.update()
-    
+
     # Update game world with car speed
     game_world.update(current_speed)
-    
+
     # Clear screen
     screen.fill(defaults.SKY_BLUE)
-    
+
     # Draw game world
     game_world.draw(screen, car_screen_y)
-    
+
     # Draw car
     car.draw(screen)
-    
+
     # Draw timer and race status
     game_world.draw_timer(screen)
-    
+
     # Show debug info
     debug_font = pygame.font.SysFont(None, 20)
     debug_text = f"Position: {game_world.position:.1f}, Start: {game_world.start_line_position}, Finish: {game_world.finish_line_position}"
     debug = debug_font.render(debug_text, True, (0, 0, 0))
     screen.blit(debug, (10, 100))
-    
+
     # Draw separator line
-    pygame.draw.line(screen, (100, 100, 100), (0, defaults.HEIGHT - 100), (defaults.WIDTH, defaults.HEIGHT - 100), 2)
-    
+    pygame.draw.line(
+        screen,
+        (100, 100, 100),
+        (0, defaults.HEIGHT - 100),
+        (defaults.WIDTH, defaults.HEIGHT - 100),
+        2,
+    )
+
     # Draw signal plot at the bottom of the screen
     signal_plot.draw(screen, 0, defaults.HEIGHT - 100)
-    
+
     # Show speed
     font = pygame.font.SysFont(None, 28)
     speed_text = f"Speed: {current_speed:.1f}"
     text_surface = font.render(speed_text, True, (0, 0, 0))
     screen.blit(text_surface, (20, 20))
-    
+
     # Show controls
     controls_font = pygame.font.SysFont(None, 24)
     if input_handler.demo_mode:
@@ -118,7 +132,7 @@ while running:
         controls_text = "Use EMG Input | R: Reset | Q: Quit"
     controls_surface = controls_font.render(controls_text, True, (0, 0, 0))
     screen.blit(controls_surface, (20, 60))
-    
+
     # Update display
     pygame.display.flip()
     clock.tick(60)

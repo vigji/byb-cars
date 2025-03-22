@@ -10,7 +10,6 @@ class Car:
         self.screen_y = y  # Fixed screen position
         self.input_handler = input_handler
 
-        
         self.img = get_car_img()
         # Speed parameters
         self.min_speed = 0.5

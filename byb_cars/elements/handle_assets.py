@@ -3,11 +3,12 @@ from byb_cars import defaults
 
 # Load assets
 
+
 def get_car_img():
     try:
         car_img = pygame.image.load(defaults.assets_dir / "car.png").convert_alpha()
     except:
-            # Create a simple car
+        # Create a simple car
         car_img = pygame.Surface((60, 100), pygame.SRCALPHA)
         car_img.fill((255, 0, 0))  # Red car
 
@@ -28,7 +29,9 @@ def get_tree_imgs():
     tree_imgs = []
     for i in range(1, 4):
         try:
-            img = pygame.image.load(defaults.assets_dir / f"tree{i}.png").convert_alpha()
+            img = pygame.image.load(
+                defaults.assets_dir / f"tree{i}.png"
+            ).convert_alpha()
             tree_imgs.append(img)
         except:
             print(f"Could not load tree{i}.png")

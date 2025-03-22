@@ -32,4 +32,4 @@ setup(
             "byb-cars=byb_cars.main:main",
         ],
     },
-) 
+)
