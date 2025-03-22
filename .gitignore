@@ -192,3 +192,7 @@ Thumbs.db
 
 # Project specific
 .byb_cars_rankings.json
+
+# Scores
+scores.json
+*/scores.json
