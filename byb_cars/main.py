@@ -51,7 +51,7 @@ car_screen_y = defaults.HEIGHT - 200  # Adjust for plot area
 car = Car(defaults.WIDTH // 2, car_screen_y, input_handler)
 
 # Create the game world
-game_world = GameWorld(baseline_speed=car.speed, game_height=defaults.HEIGHT - 100)
+game_world = GameWorld(game_height=defaults.HEIGHT - 100)
 
 # Create the signal plot
 signal_plot = SignalPlot(defaults.WIDTH, 100)  # 100 pixels tall plot

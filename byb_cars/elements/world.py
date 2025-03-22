@@ -1,23 +1,75 @@
 import pygame
 import random
 import time
+from dataclasses import dataclass
 from byb_cars import defaults
 from byb_cars.elements.handle_assets import get_tree_imgs
 
 
+@dataclass
+class WorldConfig:
+    # Race configuration
+    baseline_speed: float = 3.0
+    target_time: float = 10.0  # 10 seconds to finish at baseline speed
+    fps: int = 60
+    start_line_position: int = 500
+    
+    # Road configuration
+    road_width_fraction: float = 1/3  # Road width as a fraction of screen width
+    
+    # World elements
+    num_trees: int = 120
+    tree_min_side_offset: int = 50
+    tree_min_road_offset: int = 10
+    
+    # Road tile configuration
+    tile_size: int = 100
+    num_tiles: int = 10
+    
+    # Road markings
+    dash_length: int = 40
+    gap_length: int = 20
+    line_width: int = 8
+    edge_line_width: int = 3
+    edge_line_offset: int = 5
+    
+    # Start/finish lines
+    start_line_height: int = 30
+    finish_line_height: int = 30
+    checkerboard_size: int = 20
+    finish_checkerboard_size: int = 15
+    
+    # Text configuration
+    start_finish_font_size: int = 36
+    status_font_size: int = 24
+    text_bg_padding: int = 5
+    text_y_offset: int = 40
+    text_bg_alpha: int = 180
+    
+    # Timer display
+    timer_y: int = 20
+    best_time_x_padding: int = 20
+    
+    # Status indicators
+    indicator_y: int = 60
+    indicator_radius: int = 8
+    indicator_padding: int = 10
+    indicator_x_offset: int = 50
+
+
 # World manages all game world elements including road, trees, and race lines
 class GameWorld:
-    def __init__(self, baseline_speed=3.0, game_height=600):
-        self.baseline_speed = baseline_speed
+    def __init__(self, game_height=600, config=None):
+        self.config = config or WorldConfig()
         self.game_height = game_height
 
         # Track distance calculation - increased for more stable experience
-        self.target_time = 10.0  # 10 seconds to finish at baseline speed
-        fps = 60
-        self.track_distance = int(self.baseline_speed * fps * self.target_time)
+        self.track_distance = int(
+            self.config.baseline_speed * self.config.fps * self.config.target_time
+        )
 
         # Road dimensions
-        self.road_width = defaults.WIDTH // 3
+        self.road_width = int(defaults.WIDTH * self.config.road_width_fraction)
         self.road_left = (defaults.WIDTH - self.road_width) // 2
         self.road_right = self.road_left + self.road_width
 
@@ -26,13 +78,13 @@ class GameWorld:
         self.road_height = self.road_surface.get_height()
 
         # Start and finish line positions - positive = distance from start
-        self.start_line_position = 500
+        self.start_line_position = self.config.start_line_position
         self.finish_line_position = self.start_line_position + self.track_distance
 
         self.tree_imgs = get_tree_imgs()
 
         # Create trees
-        self.trees = self.generate_trees(120)  # More trees for longer track
+        self.trees = self.generate_trees(self.config.num_trees)
 
         # Race state
         self.race_started = False
@@ -50,14 +102,14 @@ class GameWorld:
         self.car_screen_y = None
 
         # Create checkerboard patterns for start and finish lines
-        self.start_line_height = 30
-        self.finish_line_height = 30
         self.start_line_surface = self.create_checkerboard(
-            self.road_width, self.start_line_height
+            self.road_width, self.config.start_line_height, size=self.config.checkerboard_size
         )
         self.finish_line_surface = self.create_checkerboard(
-            self.road_width, self.finish_line_height, size=15
-        )  # Smaller squares
+            self.road_width, 
+            self.config.finish_line_height, 
+            size=self.config.finish_checkerboard_size
+        )
 
         print(
             f"Track setup: Start at {self.start_line_position}, Finish at {self.finish_line_position}"
@@ -65,16 +117,16 @@ class GameWorld:
 
     def create_road(self):
         # Create road texture with markings
-        tile_size = 100  # Size of each road tile
-        num_tiles = 10  # Increased number of tiles for more coverage
+        tile_size = self.config.tile_size
+        num_tiles = self.config.num_tiles
 
         surface = pygame.Surface((self.road_width, tile_size * num_tiles))
         surface.fill(defaults.ROAD_GRAY)
 
         # Draw center line (dashed)
-        dash_length = 40
-        gap_length = 20
-        line_width = 8
+        dash_length = self.config.dash_length
+        gap_length = self.config.gap_length
+        line_width = self.config.line_width
         center_x = self.road_width // 2
 
         y = 0
@@ -87,11 +139,15 @@ class GameWorld:
             y += dash_length + gap_length
 
         # Draw edge lines
-        pygame.draw.rect(surface, defaults.LINE_WHITE, (5, 0, 3, surface.get_height()))
+        edge_offset = self.config.edge_line_offset
+        edge_width = self.config.edge_line_width
+        pygame.draw.rect(
+            surface, defaults.LINE_WHITE, (edge_offset, 0, edge_width, surface.get_height())
+        )
         pygame.draw.rect(
             surface,
             defaults.LINE_WHITE,
-            (self.road_width - 8, 0, 3, surface.get_height()),
+            (self.road_width - edge_offset - edge_width, 0, edge_width, surface.get_height()),
         )
 
         return surface
@@ -105,10 +161,16 @@ class GameWorld:
             # Choose which side of the road
             if random.random() < 0.5:
                 # Left side
-                x = random.randint(50, self.road_left - 50)
+                x = random.randint(
+                    self.config.tree_min_side_offset, 
+                    self.road_left - self.config.tree_min_side_offset
+                )
             else:
                 # Right side
-                x = random.randint(self.road_right + 10, defaults.WIDTH - 50)
+                x = random.randint(
+                    self.road_right + self.config.tree_min_road_offset, 
+                    defaults.WIDTH - self.config.tree_min_side_offset
+                )
 
             # Distribute trees evenly through world length
             y = random.randint(0, world_length)
@@ -212,61 +274,67 @@ class GameWorld:
 
         # Draw start and finish lines as checkerboards
         start_y = self.position - self.start_line_position
-        if -self.start_line_height < start_y < game_area_height:
+        if -self.config.start_line_height < start_y < game_area_height:
             surface.blit(self.start_line_surface, (self.road_left, start_y))
 
             # Add "START" text
-            font = pygame.font.SysFont(None, 36)
+            font = pygame.font.SysFont(None, self.config.start_finish_font_size)
             text = font.render("START", True, (255, 255, 255))
             # Add a background to make text more visible
-            text_bg = pygame.Surface((text.get_width() + 10, text.get_height() + 10))
+            text_bg = pygame.Surface(
+                (text.get_width() + 2*self.config.text_bg_padding, 
+                 text.get_height() + 2*self.config.text_bg_padding)
+            )
             text_bg.fill((0, 0, 0))
-            text_bg.set_alpha(180)  # Semi-transparent
+            text_bg.set_alpha(self.config.text_bg_alpha)  # Semi-transparent
             surface.blit(
                 text_bg,
                 (
-                    self.road_left + self.road_width / 2 - text.get_width() / 2 - 5,
-                    start_y - 45,
+                    self.road_left + self.road_width / 2 - text.get_width() / 2 - self.config.text_bg_padding,
+                    start_y - self.config.text_y_offset - self.config.text_bg_padding,
                 ),
             )
             surface.blit(
                 text,
                 (
                     self.road_left + self.road_width / 2 - text.get_width() / 2,
-                    start_y - 40,
+                    start_y - self.config.text_y_offset,
                 ),
             )
 
         # Finish line screen position
         finish_y = self.position - self.finish_line_position
-        if -self.finish_line_height < finish_y < game_area_height:
+        if -self.config.finish_line_height < finish_y < game_area_height:
             surface.blit(self.finish_line_surface, (self.road_left, finish_y))
 
             # Add "FINISH" text
-            font = pygame.font.SysFont(None, 36)
+            font = pygame.font.SysFont(None, self.config.start_finish_font_size)
             text = font.render("FINISH", True, (255, 255, 255))
             # Add a background to make text more visible
-            text_bg = pygame.Surface((text.get_width() + 10, text.get_height() + 10))
+            text_bg = pygame.Surface(
+                (text.get_width() + 2*self.config.text_bg_padding, 
+                 text.get_height() + 2*self.config.text_bg_padding)
+            )
             text_bg.fill((0, 0, 0))
-            text_bg.set_alpha(180)  # Semi-transparent
+            text_bg.set_alpha(self.config.text_bg_alpha)  # Semi-transparent
             surface.blit(
                 text_bg,
                 (
-                    self.road_left + self.road_width / 2 - text.get_width() / 2 - 5,
-                    finish_y - 45,
+                    self.road_left + self.road_width / 2 - text.get_width() / 2 - self.config.text_bg_padding,
+                    finish_y - self.config.text_y_offset - self.config.text_bg_padding,
                 ),
             )
             surface.blit(
                 text,
                 (
                     self.road_left + self.road_width / 2 - text.get_width() / 2,
-                    finish_y - 40,
+                    finish_y - self.config.text_y_offset,
                 ),
             )
 
     def draw_timer(self, surface):
         # Draw race information at the top of the screen
-        font = pygame.font.SysFont(None, 36)
+        font = pygame.font.SysFont(None, self.config.start_finish_font_size)
 
         # Draw current time or final time
         if self.race_finished:
@@ -285,7 +353,8 @@ class GameWorld:
 
         time_surface = font.render(time_text, True, time_color)
         surface.blit(
-            time_surface, (defaults.WIDTH // 2 - time_surface.get_width() // 2, 20)
+            time_surface, 
+            (defaults.WIDTH // 2 - time_surface.get_width() // 2, self.config.timer_y)
         )
 
         # Draw best time if available
@@ -293,13 +362,16 @@ class GameWorld:
             best_text = f"Best: {self.best_time:.2f}s"
             best_surface = font.render(best_text, True, (0, 0, 0))
             surface.blit(
-                best_surface, (defaults.WIDTH - best_surface.get_width() - 20, 20)
+                best_surface, 
+                (defaults.WIDTH - best_surface.get_width() - self.config.best_time_x_padding, 
+                 self.config.timer_y)
             )
 
         # Draw race status indicators
-        indicator_y = 60
-        indicator_radius = 8
-        padding = 10
+        indicator_y = self.config.indicator_y
+        indicator_radius = self.config.indicator_radius
+        padding = self.config.indicator_padding
+        x_offset = self.config.indicator_x_offset
 
         # Start indicator
         pygame.draw.circle(
@@ -307,35 +379,40 @@ class GameWorld:
             (200, 200, 100)
             if self.passed_start_line and not self.race_started
             else (defaults.START_LINE_COLOR if self.race_started else (200, 200, 200)),
-            (defaults.WIDTH // 2 - 50, indicator_y),
+            (defaults.WIDTH // 2 - x_offset, indicator_y),
             indicator_radius,
         )
 
-        status_font = pygame.font.SysFont(None, 24)
+        status_font = pygame.font.SysFont(None, self.config.status_font_size)
         start_text = status_font.render("Start", True, (0, 0, 0))
         surface.blit(
             start_text,
-            (defaults.WIDTH // 2 - 50 + indicator_radius + padding, indicator_y - 10),
+            (defaults.WIDTH // 2 - x_offset + indicator_radius + padding, 
+             indicator_y - self.config.indicator_radius),
         )
 
         # Finish indicator
         pygame.draw.circle(
             surface,
             defaults.FINISH_LINE_COLOR if self.race_finished else (200, 200, 200),
-            (defaults.WIDTH // 2 + 50, indicator_y),
+            (defaults.WIDTH // 2 + x_offset, indicator_y),
             indicator_radius,
         )
 
         finish_text = status_font.render("Finish", True, (0, 0, 0))
         surface.blit(
             finish_text,
-            (defaults.WIDTH // 2 + 50 + indicator_radius + padding, indicator_y - 10),
+            (defaults.WIDTH // 2 + x_offset + indicator_radius + padding, 
+             indicator_y - self.config.indicator_radius),
         )
 
     def create_checkerboard(
-        self, width, height, size=20, colors=((255, 255, 255), (0, 0, 0))
+        self, width, height, size=None, colors=((255, 255, 255), (0, 0, 0))
     ):
         """Create a checkerboard pattern surface."""
+        if size is None:
+            size = self.config.checkerboard_size
+            
         # Create a surface for the checkerboard
         surface = pygame.Surface((width, height))
         surface.fill(colors[0])  # Fill with first color as background

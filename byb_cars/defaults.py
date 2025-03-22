@@ -18,7 +18,7 @@ START_LINE_COLOR = (0, 255, 0)  # Green for start line
 FINISH_LINE_COLOR = (255, 0, 0)  # Red for finish line
 
 # Create assets directory if it doesn't exist
-assets_dir = Path("assets")
+assets_dir = Path(__file__).parent / "assets"
 assets_dir.mkdir(exist_ok=True)
 
 # Asset URLs - better images
