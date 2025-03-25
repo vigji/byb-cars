@@ -10,8 +10,8 @@ from byb_cars.elements.layout_config import layout
 @dataclass
 class WorldConfig:
     # Race configuration
-    baseline_speed: float = 3.0
-    target_time: float = 10.0  # 10 seconds to finish at baseline speed
+    baseline_speed: float = .0
+    target_time: float = 40.0  # 10 seconds to finish at baseline speed
     fps: int = 60
     start_line_position: int = 500
 
@@ -20,7 +20,7 @@ class WorldConfig:
     road_width_fraction: float = 1/3  # Road width as a fraction of screen width
     
     # World elements
-    num_trees: int = 1200
+    num_trees: int = 30
     tree_min_side_offset: int = 50
     tree_min_road_offset: int = 10
     tree_height: int = 120
@@ -60,10 +60,9 @@ class GameWorld:
 
 
         # Track distance calculation - increased for more stable experience
-        self.target_time = 10.0  # 10 seconds to finish at baseline speed
         fps = 60
         baseline_speed = 3.0
-        self.track_distance = int(baseline_speed * fps * self.target_time)
+        self.track_distance = int(baseline_speed * fps * world_config.target_time)
 
         # Road dimensions
         self.road_width = int(defaults.WIDTH * world_config.road_width_fraction)
@@ -81,7 +80,7 @@ class GameWorld:
         self.tree_imgs = get_tree_imgs(world_config.tree_height)
 
         # Create trees - 120 is a game parameter, not layout
-        self.trees = self.generate_trees(120)
+        self.trees = self.generate_trees()
 
         # Race state
         self.race_started = False
@@ -149,39 +148,60 @@ class GameWorld:
 
         return surface
 
-    def generate_trees(self, num_trees):
+    def generate_trees(self):
         trees = []
         # Create a large enough world to include finish line
         world_length = self.finish_line_position + 1000
-
-        for _ in range(num_trees):
-
+        
+        # Try to place trees with minimum spacing
+        attempts = 0
+        max_attempts = 100  # Prevent infinite loops
+        
+        for _ in range(world_config.num_trees):
             # Choose a random tree image
             img = random.choice(self.tree_imgs)
             img_width = img.get_width()
             img_height = img.get_height()
             
-            # Choose which side of the road
-            if random.random() < 0.5:
-                # Left side
-                x = random.randint(
-                    world_config.tree_min_side_offset, 
-                    self.road_left - world_config.tree_min_side_offset
-                )
-                x -= img_width//2
-
-            else:
-                # Right side
-                x = random.randint(
-                    self.road_right + world_config.tree_min_road_offset, 
-                    defaults.WIDTH - world_config.tree_min_side_offset
-                )
-                x -= img_width//2
-            # Distribute trees evenly through world length
-            y = random.randint(0, world_length)
-
-
-            trees.append((x, y, img))
+            # Set minimum distance between trees
+            min_distance = int(4/3 * max(img_width, img_height))
+            
+            valid_position = False
+            attempts = 0
+            
+            while not valid_position and attempts < max_attempts:
+                # Choose which side of the road
+                if random.random() < 0.5:
+                    # Left side
+                    x = random.randint(
+                        world_config.tree_min_side_offset, 
+                        self.road_left - world_config.tree_min_side_offset
+                    )
+                    x -= img_width//2
+                else:
+                    # Right side
+                    x = random.randint(
+                        self.road_right + world_config.tree_min_road_offset, 
+                        defaults.WIDTH - world_config.tree_min_side_offset
+                    )
+                    x -= img_width//2
+                
+                # Distribute trees evenly through world length
+                y = random.randint(0, world_length)
+                
+                # Check distance from all existing trees
+                valid_position = True
+                for tx, ty, _ in trees:
+                    distance = ((x - tx) ** 2 + (y - ty) ** 2) ** 0.5
+                    if distance < min_distance:
+                        valid_position = False
+                        break
+                
+                attempts += 1
+            
+            # If we found a valid position, add the tree
+            if valid_position:
+                trees.append((x, y, img))
 
         return trees
 

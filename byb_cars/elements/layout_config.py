@@ -7,7 +7,7 @@ from byb_cars import defaults
 class FontConfig:
     """Configuration for all fonts used in the game"""
     # Font family - None means system default
-    default_font: Optional[str] = None
+    default_font: Optional[str] = "Orbitron"
     
     # Font sizes
     title_size: int = 36
@@ -48,7 +48,8 @@ class LayoutConfig:
     # Text positions
     # ======================
     speed_text_pos: Tuple[int, int] = (20, 20)  # Top left
-    user_text_pos: Tuple[int, int] = (defaults.WIDTH - 200, 20)  # Top right
+    user_text_x_padding: int = 20
+    user_text_y: int = 20
     controls_text_pos: Tuple[int, int] = (20, 60)  # Below speed
     debug_text_pos: Tuple[int, int] = (10, 100)  # Debug info position
     
@@ -81,7 +82,7 @@ class LayoutConfig:
     
     # Timer and race info
     timer_y: int = 20  # Timer vertical position
-    best_time_y: int = 60  # Best time vertical position
+    best_time_y: int = 100  # Best time vertical position
     best_time_x_padding: int = 20  # Padding from right edge
     
     # Race indicators

@@ -179,9 +179,10 @@ while running:
 
     # Show debug info
     debug_font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.debug_size)
-    debug_text = f"Position: {game_world.position:.1f}, Start: {game_world.start_line_position}, Finish: {game_world.finish_line_position}"
-    debug = debug_font.render(debug_text, True, layout.fonts.normal_color)
-    screen.blit(debug, layout.debug_text_pos)
+    debug_text = f"Position: {game_world.position:.1f}"
+    # Activate for debug
+    # debug = debug_font.render(debug_text, True, layout.fonts.normal_color)
+    # screen.blit(debug, layout.debug_text_pos)
 
     # Draw separator line
     pygame.draw.line(
@@ -204,14 +205,16 @@ while running:
     # Show current user (use the configured position)
     user_text = f"User: {current_username}"
     user_surface = font.render(user_text, True, layout.fonts.normal_color)
-    screen.blit(user_surface, layout.user_text_pos)
+    screen.blit(
+        user_surface, (defaults.WIDTH - user_surface.get_width() - layout.user_text_x_padding, layout.user_text_y)
+    )
 
     # Show controls
     controls_font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.small_size)
     if input_handler.demo_mode:
-        controls_text = "SPACE: Accelerate | R: Reset | H: High Scores | Q: Quit"
+        controls_text = "R: Reset | H: Ranking | Q: Quit"
     else:
-        controls_text = "Use EMG Input | R: Reset | H: High Scores | Q: Quit"
+        controls_text = "R: Reset | H: Ranking | Q: Quit"
     controls_surface = controls_font.render(controls_text, True, layout.fonts.normal_color)
     screen.blit(controls_surface, layout.controls_text_pos)
 

@@ -22,11 +22,7 @@ class ScoreConfig:
 
     # Text input
     max_username_length: int = 15
-    # input_text_color: tuple = (0, 0, 0)
 
-    #   input_font_size: int = 32
-    # highscores_font_size: int = 28
-    # highscores_title_font_size: int = 36
 
 
 
@@ -97,7 +93,7 @@ def get_username(screen, score_config: ScoreConfig = None) -> str:
     text = ""
     font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.subtitle_size)
     prompt_font = pygame.font.SysFont(layout.fonts.default_font, layout.fonts.subtitle_size)
-    prompt = prompt_font.render("Enter your name:", True, layout.fonts.normal_color)
+    prompt = prompt_font.render("Enter your name:", True, layout.fonts.light_color)
     
     # Create a semi-transparent overlay
     overlay = pygame.Surface((defaults.WIDTH, defaults.HEIGHT))
